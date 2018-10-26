@@ -96,14 +96,15 @@ namespace SharpWebProxy
                             // TODO: Add warning of invalid url.                     
                             return null;
                         }
-                    }).Where(x => (object)x != null).Select(x => _replacer.MatchFullUrl(x)));
-                requestMessage.Headers.Add(header, values.Select(x => x.AbsoluteUri));                        
-            }       
-            
+                    }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x)));
+                requestMessage.Headers.Add(header, values.Select(x => x.AbsoluteUri));
+            }
+
             const string cookiesName = "Cookies";
             if (context.Session.TryGetValue(cookiesName, out var cookiesBinary))
             {
-                MyCookieContainer cookieContainer = (MyCookieContainer) binaryFormatter.Deserialize(new MemoryStream(cookiesBinary));
+                MyCookieContainer cookieContainer =
+                    (MyCookieContainer) binaryFormatter.Deserialize(new MemoryStream(cookiesBinary));
                 var requestCookies = cookieContainer.GetCookieHeader(fullUrl);
                 if (!String.IsNullOrWhiteSpace(requestCookies))
                 {
@@ -152,7 +153,7 @@ namespace SharpWebProxy
                     "Link",
                     "Refresh"
                 };
-                
+
                 foreach (var header in responseHeadersToModify)
                 {
                     if (response.Headers.TryGetValues(header, out var valueList))
@@ -173,7 +174,7 @@ namespace SharpWebProxy
                                 else
                                 {
                                     List<string> newList = new List<string>();
-                                    foreach(var domain in x.Split(",").Select(m => m.Trim()))
+                                    foreach (var domain in x.Split(",").Select(m => m.Trim()))
                                     {
                                         var replaced = await _replacer.ReplaceSingleUrl(domain);
                                         newList.Add(replaced.TrimEnd('/'));
@@ -184,7 +185,7 @@ namespace SharpWebProxy
                             }).ToArray()));
                     }
                 }
-                
+
                 string[] responseHeadersToCopy = new string[]
                 {
                     "Access-Control-Allow-Credentials",
@@ -223,7 +224,7 @@ namespace SharpWebProxy
                         context.Response.Headers.Add(header, valueList.ToArray());
                     }
                 }
-                
+
                 context.Response.Headers.Add("X-Original-Url", fullUrl.AbsoluteUri);
 
                 if (response.Headers.TryGetValues("Set-Cookie", out var cookieValueList))
@@ -245,7 +246,7 @@ namespace SharpWebProxy
                     {
                         cookieContainer.SetCookies(fullUrl, cookie, false); // Ignore invalid cookies
                     }
-                    
+
                     using (var ms = new MemoryStream())
                     {
                         binaryFormatter.Serialize(ms, cookieContainer);
