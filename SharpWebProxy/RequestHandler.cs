@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -19,6 +20,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
@@ -41,6 +43,47 @@ namespace SharpWebProxy
             _httpClient = client;
         }
 
+        public async Task<Dictionary<string, IEnumerable<string>>> ProcessRequestHeader(IHeaderDictionary original)
+        {
+            Dictionary<string, IEnumerable<string>> result = new Dictionary<string, IEnumerable<string>>();
+            string[] headersToCopy = new string[]
+            {
+                "User-Agent",
+                "Accept",
+                "Accept-Language",
+                // "Connection",
+                // "Keep-Alive",
+                "Access-Control-Request-Headers",
+                "Access-Control-Request-Methods",
+                // "Upgrade-Insecure-Requests",
+                "Range"
+            };
+            foreach (var header in headersToCopy)
+            {
+                result.Add(header, original[header]);
+            }
+            string[] headersToMatch = {"Referer", "Origin"};
+            foreach (var header in headersToMatch)
+            {
+                var values = await Task.WhenAll(original[header]
+                    .Select(x =>
+                    {
+                        try
+                        {
+                            return new Uri(x);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, $"Invalid url in {header}: {x}");
+                            return null;
+                        }
+                    }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x)));
+                result.Add(header, values.Select(x => x.AbsoluteUri));
+            }
+
+            return result;
+        }
+
         public async Task HandleRequest(HttpContext context)
         {
             var fullUrl = await _replacer.MatchFullUrl(new Uri(context.Request.GetEncodedUrl()));
@@ -59,30 +102,10 @@ namespace SharpWebProxy
 
             IFormatter binaryFormatter = new BinaryFormatter();
 
-            bool usingHttps = fullUrl.Scheme == "https";
             _logger.LogInformation($"Requesting {fullUrl}");
 
             string requestMethod = context.Request.Method;
             HttpRequestMessage requestMessage = new HttpRequestMessage(new HttpMethod(requestMethod), fullUrl);
-
-            string[] headersToMatch = {"Referer", "Origin"};
-            foreach (var header in headersToMatch)
-            {
-                var values = await Task.WhenAll(context.Request.Headers[header]
-                    .Select(x =>
-                    {
-                        try
-                        {
-                            return new Uri(x);
-                        }
-                        catch (Exception ex)
-                        {
-                            // TODO: Add warning of invalid url.                     
-                            return null;
-                        }
-                    }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x)));
-                requestMessage.Headers.Add(header, values.Select(x => x.AbsoluteUri));
-            }
 
             const string cookiesName = "Cookies";
             if (context.Session.TryGetValue(cookiesName, out var cookiesBinary))
@@ -96,22 +119,12 @@ namespace SharpWebProxy
                 }
             }
 
-
-            string[] headersToCopy = new string[]
+            foreach (var header in await ProcessRequestHeader(context.Request.Headers))
             {
-                "User-Agent",
-                "Accept",
-                "Accept-Language",
-                // "Connection",
-                // "Keep-Alive",
-                "Access-Control-Request-Headers",
-                "Access-Control-Request-Methods",
-                // "Upgrade-Insecure-Requests",
-                "Range"
-            };
-            foreach (var header in headersToCopy)
-            {
-                requestMessage.Headers.Add(header, context.Request.Headers[header].ToArray());
+                if (!requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                {
+                    _logger.LogWarning($"Failed to add header ${header}");
+                }
             }
 
             if (!(HttpMethods.IsGet(requestMethod) ||
