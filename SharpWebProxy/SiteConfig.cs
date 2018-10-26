@@ -16,5 +16,7 @@ namespace SharpWebProxy
         
         public Dictionary<string, string> DomainNameReplacement { get; set; }
         public string[] BlacklistedDomains { get; set; }
+        
+        public string[] MimeWhitelist { get; set; }
     }
 }

@@ -30,10 +30,6 @@ namespace SharpWebProxy
         private readonly ILogger _logger;
         private readonly SiteConfig _config;
         private readonly HttpClient _httpClient;
-
-        private static readonly string[] MimeWhiteList =
-            {"text/css", "application/javascript", "text/html", "text/javascript", "application/x-javascript"};
-
         private readonly DomainNameReplacer _replacer;
 
         public RequestHandler(IOptions<SiteConfig> pathConfig, ILoggerFactory loggerFactory,
@@ -43,18 +39,6 @@ namespace SharpWebProxy
             _config = pathConfig.Value;
             _replacer = replacer;
             _httpClient = client;
-        }
-
-        private static readonly Regex CookieDomainRegex = new Regex(
-            @"domain=([a-zA-Z0-9.-]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-        private string ReplaceCookie(string content)
-        {
-            return CookieDomainRegex.Replace(content, m =>
-            {
-                var domain = m.Groups[1].Value;
-                return $"domain={domain}{_config.UrlSuffix}";
-            });
         }
 
         public async Task HandleRequest(HttpContext context)
@@ -272,7 +256,7 @@ namespace SharpWebProxy
                         }
                     }
 
-                    if (MimeWhiteList.Contains(response.Content.Headers.ContentType?.MediaType))
+                    if (_config.MimeWhitelist.Contains(response.Content.Headers.ContentType?.MediaType))
                     {
                         string responseContent = await response.Content.ReadAsStringAsync();
                         string replacedContent = await _replacer.ReplaceUrl(responseContent);
