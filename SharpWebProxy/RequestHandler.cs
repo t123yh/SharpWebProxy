@@ -60,25 +60,29 @@ namespace SharpWebProxy
             };
             foreach (var header in headersToCopy)
             {
-                result.Add(header, original[header]);
+                if (original[header].Count > 0)
+                    result.Add(header, original[header]);
             }
+
             string[] headersToMatch = {"Referer", "Origin"};
             foreach (var header in headersToMatch)
             {
-                var values = await Task.WhenAll(original[header]
-                    .Select(x =>
-                    {
-                        try
+                var values = (await Task.WhenAll(original[header]
+                        .Select(x =>
                         {
-                            return new Uri(x);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, $"Invalid url in {header}: {x}");
-                            return null;
-                        }
-                    }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x)));
-                result.Add(header, values.Select(x => x.AbsoluteUri));
+                            try
+                            {
+                                return new Uri(x);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, $"Invalid url in {header}: {x}");
+                                return null;
+                            }
+                        }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x))))
+                    .Select(x => x.AbsoluteUri).ToImmutableArray();
+                if (values.Length > 0)
+                    result.Add(header, values);
             }
 
             return result;
@@ -121,7 +125,8 @@ namespace SharpWebProxy
 
             foreach (var header in await ProcessRequestHeader(context.Request.Headers))
             {
-                if (!requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                bool result = requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                if (!result)
                 {
                     _logger.LogWarning($"Failed to add header ${header}");
                 }
