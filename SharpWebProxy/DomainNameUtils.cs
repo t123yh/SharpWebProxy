@@ -116,20 +116,40 @@ namespace SharpWebProxy
             if (result != null)
                 return result.Code;
 
+            bool strictMode = false;
+            addRecord:
             try
             {
-                var code = Transform(domain);
+                var code = Transform(domain, strictMode);
                 _context.Domains.Add(new Domain() {Name = domain, Code = code});
                 await _context.SaveChangesAsync();
                 return code;
             }
             catch (Exception ex)
             {
-                result = await _context.Domains.Where(x => x.Name == domain).FirstOrDefaultAsync();
-                if (result != null)
-                    return result.Code;
-                else
-                    throw;
+                // TODO: Handle this for other databse
+                var msg = ex.InnerException.Message.ToLower();
+                if (msg.Contains("unique") && msg.Contains("code"))
+                {
+                    if (!strictMode)
+                    {
+                        _context.DiscardChanges<Domain>();
+                        strictMode = true;
+                        goto addRecord;
+                    }
+                    else
+                    {
+                        throw new Exception($"Domain transform failed. Duplicate domain {domain}");
+                    }
+                }
+                else if (msg.Contains("unique") && msg.Contains("name"))
+                {
+                    result = await _context.Domains.Where(x => x.Name == domain).FirstOrDefaultAsync();
+                    if (result != null)
+                        return result.Code;
+                }
+
+                throw;
             }
         }
 

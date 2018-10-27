@@ -16,7 +16,7 @@ namespace SharpWebProxy.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Domain>()
-                .HasIndex(b => b.Code);
+                .HasIndex(b => b.Code).IsUnique();
             modelBuilder.Entity<Domain>()
                 .HasIndex(b => b.Name).IsUnique();
         }
