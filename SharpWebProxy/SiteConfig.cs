@@ -18,5 +18,6 @@ namespace SharpWebProxy
         public string[] BlacklistedDomains { get; set; }
         
         public string[] MimeWhitelist { get; set; }
+        public string[] MimeWhitelistWithoutExtension { get; set; }
     }
 }

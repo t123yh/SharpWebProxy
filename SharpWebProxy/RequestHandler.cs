@@ -33,6 +33,9 @@ namespace SharpWebProxy
         private readonly SiteConfig _config;
         private readonly HttpClient _httpClient;
         private readonly DomainNameReplacer _replacer;
+        
+        // Only replace file with no extension.
+        private readonly Regex _urlNoExtension = new Regex(@"\/[a-zA-Z0-9]*$");
 
         public RequestHandler(IOptions<SiteConfig> pathConfig, ILoggerFactory loggerFactory,
             DomainNameReplacer replacer, HttpClient client)
@@ -86,6 +89,15 @@ namespace SharpWebProxy
             }
 
             return result;
+        }
+
+        public bool CheckIfReplace(string mime, Uri uri)
+        {
+            if (_config.MimeWhitelist.Contains(mime))
+                return true;
+            if (_config.MimeWhitelistWithoutExtension.Contains(mime) && _urlNoExtension.IsMatch(uri.LocalPath))
+                return true;
+            return false;
         }
 
         public async Task HandleRequest(HttpContext context)
@@ -274,7 +286,7 @@ namespace SharpWebProxy
                         }
                     }
 
-                    if (_config.MimeWhitelist.Contains(response.Content.Headers.ContentType?.MediaType))
+                    if (CheckIfReplace(response.Content.Headers.ContentType?.MediaType, fullUrl))
                     {
                         string responseContent = await response.Content.ReadAsStringAsync();
                         string replacedContent = await _replacer.ReplaceUrl(responseContent);
