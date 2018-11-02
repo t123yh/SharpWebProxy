@@ -84,7 +84,7 @@ namespace SharpWebProxy
                                 _logger.LogWarning(ex, $"Invalid url in {header}: {x}");
                                 return null;
                             }
-                        }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x))))
+                        }).Where(x => (object) x != null).Select(x => _replacer.MatchFullUrl(x, true))))
                     .Select(x => x.AbsoluteUri).ToImmutableArray();
                 if (values.Length > 0)
                     result.Add(header, values);

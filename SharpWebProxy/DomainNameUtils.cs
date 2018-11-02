@@ -197,96 +197,93 @@ namespace SharpWebProxy
         }
 
 
-
-        public async Task<Uri> MatchFullUrl(Uri originalUri)
+        public async Task<Uri> MatchFullUrl(Uri originalUri, bool returnIfInvalid = false)
         {
-            var h = originalUri.Host.ToLower();
-            var match = _config.Value.HostRegex.Match(h);
-            if (!match.Success)
-            {
-                return null;
-            }
-
-            bool usingHttps;
-            string hostName;
-            int port = -1;
             try
             {
-                var hostCode = match.Groups[1].Value;
-                hostName = (await _dbContext.Domains.Where(x => x.Code == hostCode).FirstOrDefaultAsync())?.Name;
-                if (hostName == null)
+                var h = originalUri.Host.ToLower();
+                var match = _config.Value.HostRegex.Match(h);
+                if (!match.Success)
                 {
-                    throw new Exception();
+                    throw new Exception("Invalid hostname.");
                 }
 
-                var protocol = match.Groups[2].Value;
-                if (protocol == "hs")
+                bool usingHttps;
+                string hostName;
+                int port = -1;
+                try
                 {
-                    usingHttps = true;
+                    var hostCode = match.Groups[1].Value;
+                    hostName = (await _dbContext.Domains.Where(x => x.Code == hostCode).FirstOrDefaultAsync())?.Name;
+                    if (hostName == null)
+                    {
+                        throw new Exception();
+                    }
+
+                    var protocol = match.Groups[2].Value;
+                    if (protocol == "hs")
+                    {
+                        usingHttps = true;
+                    }
+                    else if (protocol == "h")
+                    {
+                        usingHttps = false;
+                    }
+                    else if (protocol == "m")
+                    {
+                        usingHttps = originalUri.Scheme == "https";
+                    }
+                    else if (protocol.StartsWith("p"))
+                    {
+                        usingHttps = false;
+                        port = int.Parse(protocol.Substring(1));
+                    }
+                    else if (protocol.StartsWith("s"))
+                    {
+                        usingHttps = true;
+                        port = int.Parse(protocol.Substring(1));
+                    }
+                    else
+                    {
+                        throw new Exception();
+                    }
                 }
-                else if (protocol == "h")
+                catch (Exception)
                 {
-                    usingHttps = false;
+                    throw new BadRequestException("Invalid hostname or protocol");
                 }
-                else if (protocol == "m")
+
+                string scheme = usingHttps ? "https" : "http";
+                UriBuilder builder = new UriBuilder();
+                builder.Scheme = scheme;
+                builder.Host = hostName;
+                builder.Port = port;
+                builder.Path = originalUri.AbsolutePath;
+                var queryString = System.Web.HttpUtility.ParseQueryString(originalUri.Query);
+
+                foreach (var key in queryString.AllKeys)
                 {
-                    usingHttps = originalUri.Scheme == "https";
+                    queryString[key] = await FilterSelfUrl(queryString[key]);
                 }
-                else if (protocol.StartsWith("p"))
-                {
-                    usingHttps = false;
-                    port = int.Parse(protocol.Substring(1));
-                }
-                else if (protocol.StartsWith("s"))
-                {
-                    usingHttps = true;
-                    port = int.Parse(protocol.Substring(1));
-                }
-                else
-                {
-                    throw new Exception();
-                }
+
+                // TODO: Find a better way to replace the workaround
+                builder.Query = queryString.ToString().Replace("%2c", ",");
+                return builder.Uri;
             }
             catch (Exception)
             {
-                throw new BadRequestException("Invalid hostname or protocol");
+                if (returnIfInvalid)
+                    return originalUri;
+                throw;
             }
-
-            string scheme = usingHttps ? "https" : "http";
-            UriBuilder builder = new UriBuilder();
-            builder.Scheme = scheme;
-            builder.Host = hostName;
-            builder.Port = port;
-            builder.Path = originalUri.AbsolutePath;
-            var queryString = System.Web.HttpUtility.ParseQueryString(originalUri.Query);
-
-            foreach (var key in queryString.AllKeys)
-            {
-                queryString[key] = await FilterSelfUrl(queryString[key]);
-            }
-
-            // TODO: Find a better way to replace the workaround
-            builder.Query = queryString.ToString().Replace("%2c", ",");
-            return builder.Uri;
         }
 
         public async Task<string> FilterSelfUrl(string content)
         {
             return await Utils.DomainRegex.ReplaceAsync(content, async m =>
                 {
-                    try
-                    {
-                        var result = await MatchFullUrl(new Uri(m.Value));
-                        if (result == null)
-                        {
-                            return m.Value;
-                        }
-                        return result.ToString();
-                    }
-                    catch (Exception)
-                    {
-                        return m.Value;
-                    }
+                    var result = await MatchFullUrl(new Uri(m.Value), true);
+                    return result.ToString();
                 }
             );
         }
