@@ -175,7 +175,7 @@ namespace SharpWebProxy
                     if (response.Headers.TryGetValues(header, out var valueList))
                     {
                         context.Response.Headers.Add(header,
-                            await Task.WhenAll(valueList.Select(x => _replacer.ReplaceSingleUrl(x)).ToArray()));
+                            await Task.WhenAll(valueList.Select(x => _contentReplacer.ReplaceUrlInText(x)).ToArray()));
                     }
                 }
 
