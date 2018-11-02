@@ -10,7 +10,12 @@ namespace SharpWebProxy
     public static class Utils
     {
         private static Random random = new Random();
-
+        
+        public static readonly Regex DomainRegex = new Regex(
+            @"(?<!:)(?:http\:|https\:)?\/\/(?:[a-z0-9-_]+\.)+(?:" + gTLDs.RegexList +
+            @")(?:\:\d+)?(?:\/(?:[\w\/#!:.?+=&%@!\-])*)?(?![\w\/#!:.?+=&%@!\-])",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        
         public static string RandomString(int length)
         {
             const string chars = "abcdefghijklmnopqrstuvwxyz0123456789";

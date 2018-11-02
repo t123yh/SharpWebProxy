@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Scaffolding.Internal;
@@ -14,28 +16,15 @@ namespace SharpWebProxy
 {
     public class DomainNameReplacer
     {
-        private readonly Regex _hostRegex;
-        private readonly Regex _selfAddressRegex;
         private readonly IOptions<SiteConfig> _config;
-        private readonly ApplicationDbContext _context;
+        private readonly ApplicationDbContext _dbContext;
 
         public SiteConfig Config => _config.Value;
-
-        private static readonly Regex DomainRegex = new Regex(
-            @"(?<!:)(?:http\:|https\:)?\/\/(?:[a-z0-9-_]+\.)+(?:" + gTLDs.RegexList +
-            @")(?:\:\d+)?(?:\/(?:[\w\/#!:.?+=&%@!\-])*)?(?![\w\/#!:.?+=&%@!\-])",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public DomainNameReplacer(IOptions<SiteConfig> options, ApplicationDbContext dbContext)
         {
             _config = options;
-            _hostRegex = new Regex(
-                @"^([a-zA-Z0-9-]+)-(hs|m|h|p\d+|s\d+)\." + Regex.Escape(Config.UrlSuffix) + "$",
-                RegexOptions.IgnoreCase);
-            _selfAddressRegex = new Regex(
-                @"(?:http\:|https\:)\/\/[a-zA-Z0-9]+-(?:hs|m|h|p\d+|s\d+)\." + Regex.Escape(Config.UrlSuffix) + @"\/",
-                RegexOptions.IgnoreCase);
-            _context = dbContext;
+            _dbContext = dbContext;
         }
 
         public string Transform(string url, bool restricted = false)
@@ -112,7 +101,7 @@ namespace SharpWebProxy
                 throw new BadRequestException("Domain cannot be empty");
             }
 
-            var result = await _context.Domains.Where(x => x.Name == domain).FirstOrDefaultAsync();
+            var result = await _dbContext.Domains.Where(x => x.Name == domain).FirstOrDefaultAsync();
             if (result != null)
                 return result.Code;
 
@@ -121,8 +110,8 @@ namespace SharpWebProxy
             try
             {
                 var code = Transform(domain, strictMode);
-                _context.Domains.Add(new Domain() {Name = domain, Code = code});
-                await _context.SaveChangesAsync();
+                _dbContext.Domains.Add(new Domain() {Name = domain, Code = code});
+                await _dbContext.SaveChangesAsync();
                 return code;
             }
             catch (Exception ex)
@@ -133,7 +122,7 @@ namespace SharpWebProxy
                 {
                     if (!strictMode)
                     {
-                        _context.DiscardChanges<Domain>();
+                        _dbContext.DiscardChanges<Domain>();
                         strictMode = true;
                         goto addRecord;
                     }
@@ -144,7 +133,7 @@ namespace SharpWebProxy
                 }
                 else if (msg.Contains("unique") && msg.Contains("name"))
                 {
-                    result = await _context.Domains.Where(x => x.Name == domain).FirstOrDefaultAsync();
+                    result = await _dbContext.Domains.Where(x => x.Name == domain).FirstOrDefaultAsync();
                     if (result != null)
                         return result.Code;
                 }
@@ -207,42 +196,12 @@ namespace SharpWebProxy
             return value;
         }
 
-        public async Task<string> ReplaceUrl(string content)
-        {
-            var replacedList = new List<Tuple<string, string>>();
-            string generalReplaced = await DomainRegex.ReplaceAsync(content, async m =>
-                {
-                    try
-                    {
-                        var result = await ReplaceSingleUrl(m.Value);
-                        string token = Utils.RandomString(20);
-                        replacedList.Add(new Tuple<string, string>(token, result));
-                        return token;
-                    }
-                    catch (Exception)
-                    {
-                        return m.Value;
-                    }
-                }
-            );
-            StringBuilder sb = new StringBuilder(generalReplaced);
-            foreach (var replace in Config.ReplaceList)
-            {
-                sb.Replace(replace, $"{await QueryOrAddDomain(replace)}-m.{Config.AccessUrl}");
-            }
 
-            foreach (var (token, replacement) in replacedList)
-            {
-                sb.Replace(token, replacement);
-            }
-
-            return sb.ToString();
-        }
 
         public async Task<Uri> MatchFullUrl(Uri originalUri)
         {
             var h = originalUri.Host.ToLower();
-            var match = _hostRegex.Match(h);
+            var match = _config.Value.HostRegex.Match(h);
             if (!match.Success)
             {
                 return null;
@@ -254,7 +213,7 @@ namespace SharpWebProxy
             try
             {
                 var hostCode = match.Groups[1].Value;
-                hostName = (await _context.Domains.Where(x => x.Code == hostCode).FirstOrDefaultAsync())?.Name;
+                hostName = (await _dbContext.Domains.Where(x => x.Code == hostCode).FirstOrDefaultAsync())?.Name;
                 if (hostName == null)
                 {
                     throw new Exception();
@@ -313,11 +272,15 @@ namespace SharpWebProxy
 
         public async Task<string> FilterSelfUrl(string content)
         {
-            return await DomainRegex.ReplaceAsync(content, async m =>
+            return await Utils.DomainRegex.ReplaceAsync(content, async m =>
                 {
                     try
                     {
                         var result = await MatchFullUrl(new Uri(m.Value));
+                        if (result == null)
+                        {
+                            return m.Value;
+                        }
                         return result.ToString();
                     }
                     catch (Exception)

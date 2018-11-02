@@ -33,17 +33,19 @@ namespace SharpWebProxy
         private readonly SiteConfig _config;
         private readonly HttpClient _httpClient;
         private readonly DomainNameReplacer _replacer;
+        private readonly ContentUrlReplacer _contentReplacer;
         
         // Only replace file with no extension.
         private readonly Regex _urlNoExtension = new Regex(@"\/[a-zA-Z0-9]*$");
 
         public RequestHandler(IOptions<SiteConfig> pathConfig, ILoggerFactory loggerFactory,
-            DomainNameReplacer replacer, HttpClient client)
+            DomainNameReplacer replacer, HttpClient client, ContentUrlReplacer contentReplacer)
         {
             _logger = loggerFactory.CreateLogger("RequestHandler");
             _config = pathConfig.Value;
             _replacer = replacer;
             _httpClient = client;
+            _contentReplacer = contentReplacer;
         }
 
         public async Task<Dictionary<string, IEnumerable<string>>> ProcessRequestHeader(IHeaderDictionary original)
@@ -173,7 +175,7 @@ namespace SharpWebProxy
                     if (response.Headers.TryGetValues(header, out var valueList))
                     {
                         context.Response.Headers.Add(header,
-                            await Task.WhenAll(valueList.Select(x => _replacer.ReplaceUrl(x)).ToArray()));
+                            await Task.WhenAll(valueList.Select(x => _replacer.ReplaceSingleUrl(x)).ToArray()));
                     }
                 }
 
@@ -289,7 +291,7 @@ namespace SharpWebProxy
                     if (CheckIfReplace(response.Content.Headers.ContentType?.MediaType, fullUrl))
                     {
                         string responseContent = await response.Content.ReadAsStringAsync();
-                        string replacedContent = await _replacer.ReplaceUrl(responseContent);
+                        string replacedContent = await _contentReplacer.ReplaceUrlInText(responseContent);
                         byte[] txt = Encoding.UTF8.GetBytes(replacedContent);
                         context.Response.ContentLength = txt.Length;
                         await context.Response.Body.WriteAsync(txt, 0, txt.Length);

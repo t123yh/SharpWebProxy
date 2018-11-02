@@ -67,8 +67,10 @@ namespace SharpWebProxy
             var handler = new HttpClientHandler() {UseCookies = false, AllowAutoRedirect = false};
             // var handler = new ProxyHandler(new Socks5ProxyClient("127.0.0.1", 1080)) {UseCookies = false};
             services.AddSingleton<HttpClient>(new HttpClient(handler));
+            services.AddHttpContextAccessor();
 
             services.AddScoped<DomainNameReplacer>();
+            services.AddScoped<ContentUrlReplacer>();
             services.AddScoped<RequestHandler>();
             services.AddDistributedMemoryCache();
             services.AddSession();
