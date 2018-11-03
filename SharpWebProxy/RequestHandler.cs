@@ -34,7 +34,7 @@ namespace SharpWebProxy
         private readonly HttpClient _httpClient;
         private readonly DomainNameReplacer _replacer;
         private readonly ContentUrlReplacer _contentReplacer;
-        
+
         // Only replace file with no extension.
         private readonly Regex _urlNoExtension = new Regex(@"\/[a-zA-Z0-9]*$");
 
@@ -288,10 +288,21 @@ namespace SharpWebProxy
                         }
                     }
 
-                    if (CheckIfReplace(response.Content.Headers.ContentType?.MediaType, fullUrl))
+                    string mimeType = response.Content.Headers.ContentType?.MediaType;
+                    if (CheckIfReplace(mimeType, fullUrl))
                     {
                         string responseContent = await response.Content.ReadAsStringAsync();
-                        string replacedContent = await _contentReplacer.ReplaceUrlInText(responseContent);
+                        string replacedContent;
+                        if (mimeType.Contains("text/plain") && fullUrl.AbsolutePath.StartsWith("/search") &&
+                            fullUrl.Host.Contains("google"))
+                        {
+                            replacedContent = await _contentReplacer.ReplaceGoogleSearch(responseContent);
+                        }
+                        else
+                        {
+                            replacedContent = await _contentReplacer.ReplaceUrlInText(responseContent);
+                        }
+
                         byte[] txt = Encoding.UTF8.GetBytes(replacedContent);
                         context.Response.ContentLength = txt.Length;
                         await context.Response.Body.WriteAsync(txt, 0, txt.Length);

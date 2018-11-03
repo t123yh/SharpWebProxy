@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Extreme.Net;
 using Microsoft.Extensions.Options;
 
 namespace SharpWebProxy
@@ -46,6 +47,32 @@ namespace SharpWebProxy
             foreach (var (token, replacement) in replacedList)
             {
                 sb.Replace(token, replacement);
+            }
+
+            return sb.ToString();
+        }
+
+        public async Task<string> ReplaceGoogleSearch(string content)
+        {
+            StringBuilder sb = new StringBuilder();
+            var splitContent = content.Split("\n");
+            foreach (var x in splitContent)
+            {
+                int sp = x.IndexOf(";", StringComparison.Ordinal);
+                if (sp == -1)
+                {
+                    sb.AppendLine(x);
+                    continue;
+                }
+                int len = int.Parse(x.Substring(0, sp), System.Globalization.NumberStyles.HexNumber);
+                if (x.Length - sp != len)
+                {
+                    sb.AppendLine(x);
+                    continue;
+                }
+                string item = x.Substring(sp + 1);
+                string result = await ReplaceUrlInText(item);
+                sb.AppendJoin((result.Length + 1).ToString("x"), ";", result, "\n");
             }
 
             return sb.ToString();
