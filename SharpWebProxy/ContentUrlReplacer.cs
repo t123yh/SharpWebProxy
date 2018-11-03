@@ -54,27 +54,32 @@ namespace SharpWebProxy
 
         public async Task<string> ReplaceGoogleSearch(string content)
         {
-            StringBuilder sb = new StringBuilder();
             var splitContent = content.Split("\n");
+            var lines = new List<string>();
             foreach (var x in splitContent)
             {
                 int sp = x.IndexOf(";", StringComparison.Ordinal);
                 if (sp == -1)
                 {
-                    sb.AppendLine(x);
+                    lines.Add(x);
                     continue;
                 }
                 int len = int.Parse(x.Substring(0, sp), System.Globalization.NumberStyles.HexNumber);
-                if (x.Length - sp != len)
+                int actualLen = x.Length - sp;
+                // TODO: Investigate why there's delta
+                int delta = len - actualLen;
+                if (Math.Abs(delta) > 3) // Allow a maximum delta of 3
                 {
-                    sb.AppendLine(x);
+                    lines.Add(x);
                     continue;
                 }
                 string item = x.Substring(sp + 1);
                 string result = await ReplaceUrlInText(item);
-                sb.AppendJoin((result.Length + 1).ToString("x"), ";", result, "\n");
+                lines.Add((result.Length + 1 + delta).ToString("x") +  ";"+ result);
             }
-
+            
+            StringBuilder sb = new StringBuilder();
+            sb.AppendJoin("\n", lines);
             return sb.ToString();
         }
     }
