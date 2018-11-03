@@ -120,8 +120,6 @@ namespace SharpWebProxy
 
             IFormatter binaryFormatter = new BinaryFormatter();
 
-            _logger.LogInformation($"Requesting {fullUrl}");
-
             string requestMethod = context.Request.Method;
             HttpRequestMessage requestMessage = new HttpRequestMessage(new HttpMethod(requestMethod), fullUrl);
 
@@ -160,8 +158,10 @@ namespace SharpWebProxy
                 }
             }
 
+            _logger.LogInformation($"Sending request to {requestMessage.RequestUri}");
             using (HttpResponseMessage response = await _httpClient.SendAsync(requestMessage))
             {
+                _logger.LogInformation($"Got response from {requestMessage.RequestUri}: {response.StatusCode}");
                 context.Response.StatusCode = (int) response.StatusCode;
                 string[] responseHeadersToModify = new string[]
                 {

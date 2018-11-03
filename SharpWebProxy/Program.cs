@@ -79,7 +79,7 @@ namespace SharpWebProxy
         public static IWebHost BuildWebHost(string[] args)
         {
             var hostBuilder = WebHost.CreateDefaultBuilder(args)
-                .ConfigureLogging((_, factory) => { factory.AddConsole().SetMinimumLevel(LogLevel.Warning); })
+                .ConfigureLogging((context, factory) => { factory.AddConsole().SetMinimumLevel(context.HostingEnvironment.IsDevelopment() ? LogLevel.Information : LogLevel.Warning); })
                 .ConfigureAppConfiguration((hostingContext, config) =>
                 {
                     var env = hostingContext.HostingEnvironment;
